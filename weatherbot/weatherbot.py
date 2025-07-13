@@ -2,6 +2,7 @@ import requests
 import tweepy
 import schedule
 import time
+import os
 from datetime import datetime
 
 # === OpenWeatherMap API credentials ===
@@ -9,9 +10,9 @@ WEATHER_API_KEY = "5e671b7f581679f3423aa7772f50de40"
 CITY = "South Bend, Indiana"
 LAT = 41.6764
 LON = -86.2520
-CURRENT_WEATHER_URL = f"https://api.openweathermap.org/data/2.5/weather?q={CITY}&appid={WEATHER_API_KEY}&units=imp>
+CURRENT_WEATHER_URL = f"https://api.openweathermap.org/data/2.5/weather?q={CITY}&appid={WEATHER_API_KEY}&units=imperial"
 FORECAST_URL = f"https://api.openweathermap.org/data/2.5/forecast?q={CITY}&appid={WEATHER_API_KEY}&units=imperial"
-ALERTS_URL = f"https://api.openweathermap.org/data/3.0/onecall?lat={LAT}&lon={LON}&appid={WEATHER_API_KEY}&units=i>
+ALERTS_URL = f"https://api.openweathermap.org/data/3.0/onecall?lat={LAT}&lon={LON}&appid={WEATHER_API_KEY}&units=imperial"
 
 # === Twitter API credentials ===
 TWITTER_BEARER_TOKEN = "bearer_token"
@@ -29,13 +30,25 @@ client = tweepy.Client(
     access_token_secret=TWITTER_ACCESS_TOKEN_SECRET,
 )
 
-# === Last alert tracking ===
-last_alert_sent = None
+# === File for tracking last alert sent ===
+ALERT_TRACK_FILE = "/home/joe/last_alert.txt"
 
 # === Logging ===
 def log(msg):
     with open("/home/joe/weatherbot_log.txt", "a") as f:
         f.write(f"{datetime.now()} - {msg}\n")
+
+# === Load last alert from file ===
+def load_last_alert():
+    if os.path.exists(ALERT_TRACK_FILE):
+        with open(ALERT_TRACK_FILE, "r") as f:
+            return f.read().strip()
+    return None
+
+# === Save last alert to file ===
+def save_last_alert(alert_event):
+    with open(ALERT_TRACK_FILE, "w") as f:
+        f.write(alert_event)
 
 # === Fetch current weather ===
 def fetch_current_weather():
@@ -45,8 +58,9 @@ def fetch_current_weather():
         temp = data["main"]["temp"]
         weather_desc = data["weather"][0]["description"]
         city = data["name"]
-        return f"Current weather in {city}:\n {temp}°F, {weather_desc.capitalize()}"
+        return f"Current weather in {city}:\n{temp}°F, {weather_desc.capitalize()} #SouthBend #Weather"
     else:
+        log("[ERROR] Failed to fetch current weather data.")
         return "Failed to fetch current weather data."
 
 # === Fetch 12-hour forecast ===
@@ -64,11 +78,12 @@ def fetch_12_hour_forecast():
             formatted_time = dt.strftime("%I:%M %p")
             forecast_summary.append(f"{formatted_time}: {temp}°F, {weather_desc.capitalize()}")
 
-        return "Upcoming weather:\n" + "\n".join(forecast_summary)
+        return "Upcoming weather:\n" + "\n".join(forecast_summary) + "\n#SouthBend #Forecast"
     else:
+        log("[ERROR] Failed to fetch 12-hour forecast.")
         return "Failed to fetch 12-hour forecast."
 
-# === Post weather tweet ===
+# === Tweet weather update ===
 def tweet_weather():
     try:
         current_weather = fetch_current_weather()
@@ -77,19 +92,18 @@ def tweet_weather():
 
         response = client.create_tweet(text=weather_update)
         print("Tweeted:", response.data)
-
-        with open("/home/joe/weatherbot_log.txt", "a") as f:
-            f.write(f"Tweeted at {datetime.now()}:\n{weather_update}\n\n")
+        log(f"[WEATHER TWEETED] {weather_update}")
 
     except tweepy.errors.TooManyRequests:
-        print("Rate limit exceeded. Retrying after 15 minutes...")
+        log("[ERROR] Rate limit exceeded. Retrying after 15 minutes...")
         time.sleep(900)
         tweet_weather()
     except Exception as e:
-        print(f"An error occurred: {e}")
         log(f"[ERROR] in tweet_weather: {e}")
 
-# === Check for and tweet severe alerts ===
+# === Check and tweet severe weather alerts ===
+last_alert_sent = load_last_alert()
+
 def check_severe_weather():
     global last_alert_sent
     try:
@@ -98,32 +112,49 @@ def check_severe_weather():
             data = response.json()
             alerts = data.get("alerts", [])
             if alerts:
-                latest = alerts[0]
-                event = latest.get("event", "Severe Weather Alert")
-                description = latest.get("description", "")
+                latest_alert = alerts[0]
+                event = latest_alert.get("event", "Severe Weather Alert")
+                description = latest_alert.get("description", "")
 
                 if event != last_alert_sent:
-                    tweet_text = f"⚠️ {event} ⚠️\n\n{description[:240]}..."
+                    # Build tweet text with hashtags
+                    hashtags = "#SouthBend #WeatherAlert"
+                    tweet_text = f"⚠️ {event} ⚠️\n\n{description}\n\n{hashtags}"
+
+                    # Ensure tweet fits 280 characters
+                    if len(tweet_text) > 280:
+                        allowed_length = 280 - len(hashtags) - 5  # for ... and spacing
+                        tweet_text = f"⚠️ {event} ⚠️\n\n{description[:allowed_length]}...\n\n{hashtags}"
+
+                    # Send tweet
                     client.create_tweet(text=tweet_text)
                     log(f"[ALERT TWEETED] {event} - {description[:240]}")
+
+                    # Save last alert
                     last_alert_sent = event
+                    save_last_alert(event)
+            else:
+                log("[NO ALERTS] No severe weather alerts at this time.")
         else:
-            log("Failed to fetch alerts")
+            log(f"[ERROR] Failed to fetch alerts: Status {response.status_code}")
     except Exception as e:
         log(f"[ERROR] in check_severe_weather: {e}")
 
-# === Send an initial tweet ===
+# === Send initial tweet ===
 tweet_weather()
 
-# === Schedule the function to run at specific times ===
+# === Schedule tweets ===
 schedule.every().day.at("01:00").do(tweet_weather)
 schedule.every().day.at("07:00").do(tweet_weather)
 schedule.every().day.at("11:00").do(tweet_weather)
 schedule.every().day.at("13:00").do(tweet_weather)
 schedule.every().day.at("16:00").do(tweet_weather)
 schedule.every().day.at("19:00").do(tweet_weather)
-# === Keep script running and check for alerts ===
+
+# === Check severe weather every 5 minutes ===
+schedule.every(5).minutes.do(check_severe_weather)
+
+# === Keep script running ===
 while True:
     schedule.run_pending()
-    check_severe_weather()
-    time.sleep(60)
+    time.sleep(10)
