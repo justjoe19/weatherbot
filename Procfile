@@ -1,1 +1,1 @@
-worker: python3 weatherbot.py
+worker: cd /app && python3 weatherbot.py
