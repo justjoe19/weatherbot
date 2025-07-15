@@ -4,22 +4,26 @@ import schedule
 import time
 import os
 from datetime import datetime
+from dotenv import load_dotenv
+
+# === Load environment variables from .env ===
+load_dotenv()
 
 # === OpenWeatherMap API credentials ===
-WEATHER_API_KEY = "5e671b7f581679f3423aa7772f50de40"
-CITY = "South Bend, Indiana"
-LAT = 41.6764
-LON = -86.2520
+WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
+CITY = os.getenv("CITY", "South Bend, Indiana")
+LAT = os.getenv("LAT", "41.6764")
+LON = os.getenv("LON", "-86.2520")
 CURRENT_WEATHER_URL = f"https://api.openweathermap.org/data/2.5/weather?q={CITY}&appid={WEATHER_API_KEY}&units=imperial"
 FORECAST_URL = f"https://api.openweathermap.org/data/2.5/forecast?q={CITY}&appid={WEATHER_API_KEY}&units=imperial"
 ALERTS_URL = f"https://api.openweathermap.org/data/3.0/onecall?lat={LAT}&lon={LON}&appid={WEATHER_API_KEY}&units=imperial"
 
 # === Twitter API credentials ===
-TWITTER_BEARER_TOKEN = "bearer_token"
-TWITTER_API_KEY = "api_key"
-TWITTER_API_SECRET = "api_secret_key"
-TWITTER_ACCESS_TOKEN = "api_access_token"
-TWITTER_ACCESS_TOKEN_SECRET = "secret_access_token"
+TWITTER_BEARER_TOKEN = os.getenv("TWITTER_BEARER_TOKEN")
+TWITTER_API_KEY = os.getenv("TWITTER_API_KEY")
+TWITTER_API_SECRET = os.getenv("TWITTER_API_SECRET")
+TWITTER_ACCESS_TOKEN = os.getenv("TWITTER_ACCESS_TOKEN")
+TWITTER_ACCESS_TOKEN_SECRET = os.getenv("TWITTER_ACCESS_TOKEN_SECRET")
 
 # === Twitter client ===
 client = tweepy.Client(
@@ -31,11 +35,11 @@ client = tweepy.Client(
 )
 
 # === File for tracking last alert sent ===
-ALERT_TRACK_FILE = "/home/joe/last_alert.txt"
+ALERT_TRACK_FILE = "last_alert.txt"
 
 # === Logging ===
 def log(msg):
-    with open("/home/joe/weatherbot_log.txt", "a") as f:
+    with open("weatherbot_log.txt", "a") as f:
         f.write(f"{datetime.now()} - {msg}\n")
 
 # === Load last alert from file ===
@@ -117,20 +121,15 @@ def check_severe_weather():
                 description = latest_alert.get("description", "")
 
                 if event != last_alert_sent:
-                    # Build tweet text with hashtags
                     hashtags = "#SouthBend #WeatherAlert"
                     tweet_text = f"⚠️ {event} ⚠️\n\n{description}\n\n{hashtags}"
 
-                    # Ensure tweet fits 280 characters
                     if len(tweet_text) > 280:
-                        allowed_length = 280 - len(hashtags) - 5  # for ... and spacing
+                        allowed_length = 280 - len(hashtags) - 5
                         tweet_text = f"⚠️ {event} ⚠️\n\n{description[:allowed_length]}...\n\n{hashtags}"
 
-                    # Send tweet
                     client.create_tweet(text=tweet_text)
                     log(f"[ALERT TWEETED] {event} - {description[:240]}")
-
-                    # Save last alert
                     last_alert_sent = event
                     save_last_alert(event)
             else:
