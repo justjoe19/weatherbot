@@ -106,9 +106,8 @@ def tweet_weather():
         time.sleep(900)
         tweet_weather()
     except Exception as e:
-    print(f"[ERROR] in tweet_weather: {e}")  # 👈 Print to console
-    log(f"[ERROR] in tweet_weather: {e}")
-
+        print(f"[ERROR] in tweet_weather: {e}") 
+        log(f"[ERROR] in tweet_weather: {e}")
 
 # === Check and tweet severe weather alerts ===
 last_alert_sent = load_last_alert()
