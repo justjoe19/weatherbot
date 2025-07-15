@@ -6,6 +6,9 @@ import os
 from datetime import datetime
 from dotenv import load_dotenv
 
+print("🚀 Weatherbot is starting up...")
+
+
 # === Load environment variables from .env ===
 load_dotenv()
 
@@ -140,7 +143,7 @@ def check_severe_weather():
         log(f"[ERROR] in check_severe_weather: {e}")
 
 # === Send initial tweet ===
-tweet_weather()
+tweet_weather() 
 
 # === Schedule tweets ===
 schedule.every().day.at("01:00").do(tweet_weather)
