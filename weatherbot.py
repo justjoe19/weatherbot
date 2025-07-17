@@ -3,6 +3,7 @@ import tweepy
 import schedule
 import time
 import os
+import json
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
@@ -36,8 +37,9 @@ client = tweepy.Client(
     access_token_secret=TWITTER_ACCESS_TOKEN_SECRET,
 )
 
-# === File for tracking last alert sent ===
+# === File for tracking last alert sent and forecast cache ===
 ALERT_TRACK_FILE = "last_alert.txt"
+FORECAST_CACHE_FILE = "forecast_cache.json"
 
 # === Logging ===
 def log(msg):
@@ -56,6 +58,18 @@ def save_last_alert(alert_event):
     with open(ALERT_TRACK_FILE, "w") as f:
         f.write(alert_event)
 
+# === Save forecast data to cache ===
+def save_forecast_cache(data):
+    with open(FORECAST_CACHE_FILE, "w") as f:
+        json.dump(data, f)
+
+# === Load forecast data from cache ===
+def load_forecast_cache():
+    if os.path.exists(FORECAST_CACHE_FILE):
+        with open(FORECAST_CACHE_FILE, "r") as f:
+            return json.load(f)
+    return None
+
 # === Fetch current weather ===
 def fetch_current_weather():
     response = requests.get(CURRENT_WEATHER_URL)
@@ -69,42 +83,68 @@ def fetch_current_weather():
         log("[ERROR] Failed to fetch current weather data.")
         return "Failed to fetch current weather data."
 
-# === Fetch 12-hour forecast (fixed to start at next 3-hour block) ===
+# === Fetch 12-hour forecast and fill missing slots from cache ===
 def fetch_12_hour_forecast():
-    response = requests.get(FORECAST_URL)
-    if response.status_code == 200:
-        data = response.json()
-        forecast_list = data["list"]
-        forecast_summary = []
+    live_data = None
+    try:
+        response = requests.get(FORECAST_URL)
+        if response.status_code == 200:
+            live_data = response.json()
+            save_forecast_cache(live_data)  # Update cache with fresh data
+        else:
+            log(f"[WARNING] Could not fetch live forecast (status {response.status_code})")
+    except Exception as e:
+        log(f"[ERROR] Failed to fetch live forecast: {e}")
 
-        # Get current time
-        now = datetime.now()
+    # Load cached data if available
+    cached_data = load_forecast_cache()
 
-        # Find the next 3-hour increment from now
-        hours_to_next_block = (3 - now.hour % 3) % 3
-        if hours_to_next_block == 0:
-            hours_to_next_block = 3  # Ensure we move forward to the *next* block
-        next_forecast_time = (now + timedelta(hours=hours_to_next_block)).replace(
-            minute=0, second=0, microsecond=0
-        )
+    if not live_data and not cached_data:
+        return "Failed to fetch forecast and no cached data available."
 
-        # Loop through API forecast list
+    # Use live forecast first, then fill missing slots with cached forecast
+    combined_forecast = []
+    seen_times = set()
+
+    now = datetime.now()
+
+    # Find the next 3-hour increment
+    hours_to_next_block = (3 - now.hour % 3) % 3
+    if hours_to_next_block == 0:
+        hours_to_next_block = 3
+    next_forecast_time = (now + timedelta(hours=hours_to_next_block)).replace(
+        minute=0, second=0, microsecond=0
+    )
+
+    # Merge live and cached data
+    def merge_forecasts(forecast_list):
+        merged = []
         for forecast in forecast_list:
             dt = datetime.strptime(forecast["dt_txt"], "%Y-%m-%d %H:%M:%S")
+            if dt >= next_forecast_time and dt not in seen_times:
+                seen_times.add(dt)
+                merged.append((dt, forecast))
+        return merged
 
-            if dt >= next_forecast_time:
-                temp = forecast["main"]["temp"]
-                weather_desc = forecast["weather"][0]["description"]
-                formatted_time = dt.strftime("%I:%M %p")
-                forecast_summary.append(f"{formatted_time}: {temp}°F, {weather_desc.capitalize()}")
+    if cached_data:
+        combined_forecast.extend(merge_forecasts(cached_data["list"]))
+    if live_data:
+        combined_forecast.extend(merge_forecasts(live_data["list"]))
 
-            if len(forecast_summary) == 4:  # Only include 4 forecast points (12 hours)
-                break
+    # Sort merged forecasts chronologically and take next 4 slots
+    combined_forecast.sort(key=lambda x: x[0])
+    forecast_summary = []
 
-        return "Upcoming weather:\n" + "\n".join(forecast_summary) + "\n#SouthBend #Forecast"
-    else:
-        log("[ERROR] Failed to fetch 12-hour forecast.")
-        return "Failed to fetch 12-hour forecast."
+    for dt, forecast in combined_forecast[:4]:
+        temp = forecast["main"]["temp"]
+        weather_desc = forecast["weather"][0]["description"]
+        formatted_time = dt.strftime("%I:%M %p")
+        forecast_summary.append(f"{formatted_time}: {temp}°F, {weather_desc.capitalize()}")
+
+    if not forecast_summary:
+        return "No forecast data available."
+
+    return "Upcoming weather:\n" + "\n".join(forecast_summary) + "\n#SouthBend #Forecast"
 
 # === Tweet weather update ===
 def tweet_weather():
@@ -122,7 +162,7 @@ def tweet_weather():
         time.sleep(900)
         tweet_weather()
     except Exception as e:
-        print(f"[ERROR] in tweet_weather: {e}") 
+        print(f"[ERROR] in tweet_weather: {e}")
         log(f"[ERROR] in tweet_weather: {e}")
 
 # === Check and tweet severe weather alerts ===
@@ -160,7 +200,7 @@ def check_severe_weather():
         log(f"[ERROR] in check_severe_weather: {e}")
 
 # === Send initial tweet ===
-tweet_weather() 
+tweet_weather()
 
 # === Schedule tweets ===
 schedule.every().day.at("01:00").do(tweet_weather)
