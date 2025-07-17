@@ -75,10 +75,10 @@ def fetch_current_weather():
     response = requests.get(CURRENT_WEATHER_URL)
     if response.status_code == 200:
         data = response.json()
-        temp = data["main"]["temp"]
+        temp = round(data["main"]["temp"])  # Round temperature
         weather_desc = data["weather"][0]["description"]
         city = data["name"]
-        return f"Current weather in {city}:\n{temp}°F, {weather_desc.capitalize()} #SouthBend #Weather"
+        return f"Current weather in {city}:\n{temp}°F, {weather_desc.capitalize()}"
     else:
         log("[ERROR] Failed to fetch current weather data.")
         return "Failed to fetch current weather data."
@@ -136,7 +136,7 @@ def fetch_12_hour_forecast():
     forecast_summary = []
 
     for dt, forecast in combined_forecast[:4]:
-        temp = forecast["main"]["temp"]
+        temp = round(forecast["main"]["temp"])  # Round temperature
         weather_desc = forecast["weather"][0]["description"]
         formatted_time = dt.strftime("%I:%M %p")
         forecast_summary.append(f"{formatted_time}: {temp}°F, {weather_desc.capitalize()}")
@@ -144,7 +144,7 @@ def fetch_12_hour_forecast():
     if not forecast_summary:
         return "No forecast data available."
 
-    return "Upcoming weather:\n" + "\n".join(forecast_summary) + "\n#SouthBend #Forecast"
+    return "Upcoming weather:\n" + "\n".join(forecast_summary) + "\n#SouthBend #Indiana #Weather #Forecast"
 
 # === Tweet weather update ===
 def tweet_weather():
