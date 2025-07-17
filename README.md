@@ -1,8 +1,12 @@
-# Weatherbot
+# 🌤️ Weatherbot
 
-This python program uses APIs from OpenWeatherMap and X.com (formerly Twitter) to automatically 
-tweet a weather forecast message at designated intervals throughout the day and night.  It will also post severe weather alerts as they are issued for the area.
+Weatherbot is a Python app that tweets the current weather, a 12-hour forecast, and severe weather alerts for a specific location.  
 
-Any location can be used, but it is written using South Bend, Indiana as the location.
+It uses the **OpenWeatherMap API** for weather data and the **Twitter API** to post updates automatically on a schedule.  
 
-Weatherbot is currently active @SBforecast on X.com
+✨ Features:
+- 🕒 Tweets **current weather** with rounded temperatures (°F)
+- 📆 Includes a **12-hour forecast** in 3-hour increments
+- ⚠️ Checks for **severe weather alerts** every 5 minutes and posts them **immediately**
+- 🗂 Uses cached forecast data to fill in **missing time slots** if the API skips them
+- ⏰ Runs continuously and posts at scheduled times
