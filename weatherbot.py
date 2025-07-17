@@ -3,11 +3,10 @@ import tweepy
 import schedule
 import time
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
 print("🚀 Weatherbot is starting up...")
-
 
 # === Load environment variables from .env ===
 load_dotenv()
@@ -70,7 +69,7 @@ def fetch_current_weather():
         log("[ERROR] Failed to fetch current weather data.")
         return "Failed to fetch current weather data."
 
-# === Fetch 12-hour forecast ===
+# === Fetch 12-hour forecast (fixed to start at next 3-hour block) ===
 def fetch_12_hour_forecast():
     response = requests.get(FORECAST_URL)
     if response.status_code == 200:
@@ -78,12 +77,29 @@ def fetch_12_hour_forecast():
         forecast_list = data["list"]
         forecast_summary = []
 
-        for forecast in forecast_list[:4]:
-            temp = forecast["main"]["temp"]
-            weather_desc = forecast["weather"][0]["description"]
+        # Get current time
+        now = datetime.now()
+
+        # Find the next 3-hour increment from now
+        hours_to_next_block = (3 - now.hour % 3) % 3
+        if hours_to_next_block == 0:
+            hours_to_next_block = 3  # Ensure we move forward to the *next* block
+        next_forecast_time = (now + timedelta(hours=hours_to_next_block)).replace(
+            minute=0, second=0, microsecond=0
+        )
+
+        # Loop through API forecast list
+        for forecast in forecast_list:
             dt = datetime.strptime(forecast["dt_txt"], "%Y-%m-%d %H:%M:%S")
-            formatted_time = dt.strftime("%I:%M %p")
-            forecast_summary.append(f"{formatted_time}: {temp}°F, {weather_desc.capitalize()}")
+
+            if dt >= next_forecast_time:
+                temp = forecast["main"]["temp"]
+                weather_desc = forecast["weather"][0]["description"]
+                formatted_time = dt.strftime("%I:%M %p")
+                forecast_summary.append(f"{formatted_time}: {temp}°F, {weather_desc.capitalize()}")
+
+            if len(forecast_summary) == 4:  # Only include 4 forecast points (12 hours)
+                break
 
         return "Upcoming weather:\n" + "\n".join(forecast_summary) + "\n#SouthBend #Forecast"
     else:
