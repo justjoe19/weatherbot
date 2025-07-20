@@ -121,20 +121,35 @@ def fetch_current_weather():
 def build_forecast(forecast_data, source="Live"):
     forecast_summary = []
     now = datetime.now(timezone.utc)
-    start_time = now + timedelta(hours=3)
+    
+    # Round up to the next 3-hour mark
+    hours_until_next = (3 - (now.hour % 3)) % 3
+    if now.minute > 0 or now.second > 0:
+        hours_until_next += 3  # Ensure we start at the next 3-hour mark
+    start_time = (now + timedelta(hours=hours_until_next)).replace(minute=0, second=0, microsecond=0)
+    
     count = 0
-
-    for period in forecast_data["properties"]["periods"]:
-        # Parse ISO timestamp and ensure it's timezone-aware
-        forecast_time = datetime.fromisoformat(period["startTime"])
-        if forecast_time.tzinfo is None:
-            forecast_time = forecast_time.replace(tzinfo=timezone.utc)
-
-        # Allow the closest forecast block after (now + 3 hours) - 1 hour
-        if forecast_time >= start_time - timedelta(hours=1) and count < 4:
-            temp = period["temperature"]
-            short_forecast = period["shortForecast"]
-            formatted_time = forecast_time.astimezone().strftime("%I:%M %p").lstrip("0")
+    for i in range(4):  # Get 4 forecast periods (3, 6, 9, 12 hours out)
+        target_time = start_time + timedelta(hours=i * 3)
+        
+        # Find the closest forecast period to the target time
+        closest_period = None
+        min_time_diff = timedelta(hours=1)  # Allow up to 1-hour difference
+        
+        for period in forecast_data["properties"]["periods"]:
+            forecast_time = datetime.fromisoformat(period["startTime"])
+            if forecast_time.tzinfo is None:
+                forecast_time = forecast_time.replace(tzinfo=timezone.utc)
+            
+            time_diff = abs(forecast_time - target_time)
+            if time_diff <= min_time_diff:
+                closest_period = period
+                min_time_diff = time_diff
+        
+        if closest_period:
+            temp = closest_period["temperature"]
+            short_forecast = closest_period["shortForecast"]
+            formatted_time = target_time.astimezone().strftime("%I:%M %p").lstrip("0")
             forecast_summary.append(f"{formatted_time}: {temp}°F, {short_forecast}")
             count += 1
 
