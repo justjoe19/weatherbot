@@ -121,23 +121,25 @@ def build_forecast(forecast_data, source="Live"):
     forecast_summary = []
     local_tz = pytz.timezone('America/New_York')  # EDT for South Bend, Indiana
     now = datetime.now(local_tz)
-    
-    # Set start time to the current hour (rounded down)
-    start_time = now.replace(minute=0, second=0, microsecond=0)
-    
-    for i in range(4):  # Get forecast for now, +3h, +6h, +9h
+
+    # Round up to the next hour if more than 10 minutes past the hour
+    if now.minute > 10:
+        start_time = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+    else:
+        start_time = now.replace(minute=0, second=0, microsecond=0)
+
+    for i in range(4):  # Get forecast for next 4 periods
         target_time = start_time + timedelta(hours=i * 3)
-        
         closest_period = None
         min_time_diff = timedelta(hours=1)
-        
+
         for period in forecast_data["properties"]["periods"]:
             forecast_time = datetime.fromisoformat(period["startTime"]).astimezone(local_tz)
             time_diff = abs(forecast_time - target_time)
             if time_diff <= min_time_diff:
                 closest_period = period
                 min_time_diff = time_diff
-        
+
         if closest_period:
             temp = closest_period["temperature"]
             short_forecast = closest_period["shortForecast"]
