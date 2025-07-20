@@ -1,0 +1,10 @@
+2025-07-20 19:34:50.699093+00:00 - [MOCK WEATHER TWEETED] Current weather in South Bend, Indiana:
+76°F, Cloudy
+
+Upcoming weather (Live):
+3:00 PM: 78°F, Slight Chance Rain Showers
+6:00 PM: 80°F, Mostly Cloudy
+9:00 PM: 74°F, Partly Cloudy
+12:00 AM: 68°F, Partly Cloudy
+
+#SouthBend #Indiana #Weather #Forecast

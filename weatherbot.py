@@ -122,14 +122,11 @@ def build_forecast(forecast_data, source="Live"):
     local_tz = pytz.timezone('America/New_York')  # EDT for South Bend, Indiana
     now = datetime.now(local_tz)
     
-    # Set start time to the next full hour
-    hours_until_next = 1 if now.minute > 0 or now.second > 0 else 0
-    start_time = (now.replace(minute=0, second=0, microsecond=0) + 
-                  timedelta(hours=hours_until_next))
+    # Set start time to the current hour (rounded down)
+    start_time = now.replace(minute=0, second=0, microsecond=0)
     
-    count = 0
-    for i in range(4):  # Get forecast for next hour, then 3, 6, 9 hours out
-        target_time = start_time + timedelta(hours=i * 3 if i > 0 else 0)
+    for i in range(4):  # Get forecast for now, +3h, +6h, +9h
+        target_time = start_time + timedelta(hours=i * 3)
         
         closest_period = None
         min_time_diff = timedelta(hours=1)
@@ -146,7 +143,6 @@ def build_forecast(forecast_data, source="Live"):
             short_forecast = closest_period["shortForecast"]
             formatted_time = target_time.strftime("%I:%M %p").lstrip("0")
             forecast_summary.append(f"{formatted_time}: {temp}°F, {short_forecast}")
-            count += 1
 
     if forecast_summary:
         return f"Upcoming weather ({source}):\n" + "\n".join(forecast_summary)
@@ -187,8 +183,7 @@ def tweet_weather():
         forecast = fetch_hourly_forecast()
         hashtags = "#SouthBend #Indiana #Weather #Forecast"
         tweet_text = f"{current_weather}\n\n{forecast}\n\n{hashtags}"
-        response = client.create_tweet(text=tweet_text)
-        print("Tweeted:", response.data)
+        client.create_tweet(text=tweet_text)  # <-- Restore this line
         log(f"[WEATHER TWEETED] {tweet_text}")
 
     except tweepy.errors.TooManyRequests:
