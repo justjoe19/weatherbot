@@ -38,7 +38,8 @@ ALERT_TRACK_FILE = "last_alert.txt"
 FORECAST_CACHE_FILE = "forecast_cache.json"
 
 # === NWS API headers ===
-HEADERS = {"User-Agent": "WeatherBot (you@example.com)"}
+HEADERS = {"User-Agent": "WeatherBot (https://github.com/justjoe19/weatherbot)"}
+
 
 # === Logging ===
 def log(msg):
