@@ -4,22 +4,18 @@ import schedule
 import time
 import os
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
-print("🚀 Weatherbot is starting up...")
+print("🚀 NWS Weatherbot is starting up...")
 
 # === Load environment variables from .env ===
 load_dotenv()
 
-# === OpenWeatherMap API credentials ===
-WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
+# === Location settings ===
 CITY = os.getenv("CITY", "South Bend, Indiana")
 LAT = os.getenv("LAT", "41.6764")
 LON = os.getenv("LON", "-86.2520")
-CURRENT_WEATHER_URL = f"https://api.openweathermap.org/data/2.5/weather?q={CITY}&appid={WEATHER_API_KEY}&units=imperial"
-FORECAST_URL = f"https://api.openweathermap.org/data/2.5/forecast?q={CITY}&appid={WEATHER_API_KEY}&units=imperial"
-ALERTS_URL = f"https://api.openweathermap.org/data/3.0/onecall?lat={LAT}&lon={LON}&appid={WEATHER_API_KEY}&units=imperial"
 
 # === Twitter API credentials ===
 TWITTER_BEARER_TOKEN = os.getenv("TWITTER_BEARER_TOKEN")
@@ -37,9 +33,12 @@ client = tweepy.Client(
     access_token_secret=TWITTER_ACCESS_TOKEN_SECRET,
 )
 
-# === File for tracking last alert sent and forecast cache ===
+# === Files for tracking alerts and caching forecast ===
 ALERT_TRACK_FILE = "last_alert.txt"
 FORECAST_CACHE_FILE = "forecast_cache.json"
+
+# === NWS API headers ===
+HEADERS = {"User-Agent": "WeatherBot (you@example.com)"}
 
 # === Logging ===
 def log(msg):
@@ -70,141 +69,101 @@ def load_forecast_cache():
             return json.load(f)
     return None
 
-# === Fetch current weather ===
-def fetch_current_weather():
-    response = requests.get(CURRENT_WEATHER_URL)
-    if response.status_code == 200:
-        data = response.json()
-        temp = round(data["main"]["temp"])  # Round temperature
-        weather_desc = data["weather"][0]["description"]
-        city = data["name"]
-        return f"Current weather in {city}:\n{temp}°F, {weather_desc.capitalize()}"
-    else:
-        log("[ERROR] Failed to fetch current weather data.")
-        return "Failed to fetch current weather data."
-
-# === Fetch 12-hour forecast and fill missing slots from cache ===
-def fetch_12_hour_forecast():
-    live_data = None
+# === Fetch hourly forecast from NWS ===
+def fetch_hourly_forecast():
     try:
-        response = requests.get(FORECAST_URL)
-        if response.status_code == 200:
-            live_data = response.json()
-            save_forecast_cache(live_data)  # Update cache with fresh data
-        else:
-            log(f"[WARNING] Could not fetch live forecast (status {response.status_code})")
+        # Step 1: Get grid point info for the location
+        points_url = f"https://api.weather.gov/points/{LAT},{LON}"
+        points_resp = requests.get(points_url, headers=HEADERS)
+        points_resp.raise_for_status()
+        points_data = points_resp.json()
+
+        # Step 2: Get hourly forecast URL
+        forecast_url = points_data["properties"]["forecastHourly"]
+
+        # Step 3: Get hourly forecast data
+        forecast_resp = requests.get(forecast_url, headers=HEADERS)
+        forecast_resp.raise_for_status()
+        forecast_data = forecast_resp.json()
+        save_forecast_cache(forecast_data)  # Cache the data
+
+        # Step 4: Filter forecasts starting 3 hours from now
+        now = datetime.now()
+        start_time = now + timedelta(hours=3)
+
+        forecast_summary = []
+        count = 0
+        for period in forecast_data["properties"]["periods"]:
+            forecast_time = datetime.fromisoformat(period["startTime"])
+            if forecast_time >= start_time and count < 4:
+                temp = period["temperature"]
+                short_forecast = period["shortForecast"]
+                formatted_time = forecast_time.strftime("%I:%M %p").lstrip("0")
+                forecast_summary.append(f"{formatted_time}: {temp}°F, {short_forecast}")
+                count += 1
+
+        if not forecast_summary:
+            return "No forecast data available."
+
+        return f"Upcoming weather for {CITY}:\n" + "\n".join(forecast_summary) + "\n#SouthBend #Indiana #Weather #Forecast"
+
     except Exception as e:
-        log(f"[ERROR] Failed to fetch live forecast: {e}")
+        log(f"[ERROR] Failed to fetch forecast: {e}")
+        cached_data = load_forecast_cache()
+        if cached_data:
+            log("[WARNING] Using cached forecast data.")
+            return "Using cached forecast data.\n"
+        return "Failed to fetch forecast data."
 
-    # Load cached data if available
-    cached_data = load_forecast_cache()
+# === Fetch active severe weather alerts from NWS ===
+last_alert_sent = load_last_alert()
 
-    if not live_data and not cached_data:
-        return "Failed to fetch forecast and no cached data available."
+def fetch_severe_weather_alerts():
+    global last_alert_sent
+    try:
+        alerts_url = f"https://api.weather.gov/alerts/active?point={LAT},{LON}"
+        alerts_resp = requests.get(alerts_url, headers=HEADERS)
+        alerts_resp.raise_for_status()
+        alerts_data = alerts_resp.json()
 
-    # Use live forecast first, then fill missing slots with cached forecast
-    combined_forecast = []
-    seen_times = set()
+        for alert in alerts_data.get("features", []):
+            event = alert["properties"]["event"]
+            description = alert["properties"]["description"]
 
-    # Get timezone offset dynamically from live data (fallback to cached)
-    timezone_offset = 0
-    if live_data:
-        timezone_offset = live_data.get("city", {}).get("timezone", 0)
-    elif cached_data:
-        timezone_offset = cached_data.get("city", {}).get("timezone", 0)
+            if event != last_alert_sent:
+                hashtags = f"#{CITY.replace(' ', '')} #WeatherAlert"
+                tweet_text = f"⚠️ {event} ⚠️\n\n{description}\n\n{hashtags}"
 
-    location_tz = timezone(timedelta(seconds=timezone_offset))
+                # Truncate if too long
+                if len(tweet_text) > 280:
+                    allowed_length = 280 - len(hashtags) - 5
+                    tweet_text = f"⚠️ {event} ⚠️\n\n{description[:allowed_length]}...\n\n{hashtags}"
 
-    # Current time in location's timezone
-    now_utc = datetime.utcnow().replace(tzinfo=timezone.utc)
-    now_local = now_utc.astimezone(location_tz)
+                client.create_tweet(text=tweet_text)
+                log(f"[ALERT TWEETED] {event} - {description[:240]}")
+                last_alert_sent = event
+                save_last_alert(event)
+                break  # Only tweet the first new alert
+        else:
+            log("[NO ALERTS] No severe weather alerts at this time.")
 
-    # Add 3 hours to determine starting time
-    start_time_local = now_local + timedelta(hours=3)
-
-    # Find next forecast block after "now + 3 hours"
-    def merge_forecasts(forecast_list):
-        merged = []
-        for forecast in forecast_list:
-            forecast_time_utc = datetime.strptime(forecast["dt_txt"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
-            forecast_time_local = forecast_time_utc.astimezone(location_tz)
-            if forecast_time_local >= start_time_local and forecast_time_local not in seen_times:
-                seen_times.add(forecast_time_local)
-                merged.append((forecast_time_local, forecast))
-        return merged
-
-    if cached_data:
-        combined_forecast.extend(merge_forecasts(cached_data["list"]))
-    if live_data:
-        combined_forecast.extend(merge_forecasts(live_data["list"]))
-
-    # Sort merged forecasts chronologically and take next 4 slots (12 hours)
-    combined_forecast.sort(key=lambda x: x[0])
-    forecast_summary = []
-
-    for dt_local, forecast in combined_forecast[:4]:
-        temp = round(forecast["main"]["temp"])  # Round temperature
-        weather_desc = forecast["weather"][0]["description"]
-        formatted_time = dt_local.strftime("%I:%M %p").lstrip("0")
-        forecast_summary.append(f"{formatted_time}: {temp}°F, {weather_desc.capitalize()}")
-
-    if not forecast_summary:
-        return "No forecast data available."
-
-    return f"Upcoming weather for {CITY}:\n" + "\n".join(forecast_summary) + f"\n#Weather #Forecast #{CITY.replace(' ', '')}"
+    except Exception as e:
+        log(f"[ERROR] Failed to fetch severe weather alerts: {e}")
 
 # === Tweet weather update ===
 def tweet_weather():
     try:
-        current_weather = fetch_current_weather()
-        forecast = fetch_12_hour_forecast()
-        weather_update = current_weather + "\n\n" + forecast
-
-        response = client.create_tweet(text=weather_update)
+        forecast = fetch_hourly_forecast()
+        response = client.create_tweet(text=forecast)
         print("Tweeted:", response.data)
-        log(f"[WEATHER TWEETED] {weather_update}")
+        log(f"[WEATHER TWEETED] {forecast}")
 
     except tweepy.errors.TooManyRequests:
         log("[ERROR] Rate limit exceeded. Retrying after 15 minutes...")
         time.sleep(900)
         tweet_weather()
     except Exception as e:
-        print(f"[ERROR] in tweet_weather: {e}")
         log(f"[ERROR] in tweet_weather: {e}")
-
-# === Check and tweet severe weather alerts ===
-last_alert_sent = load_last_alert()
-
-def check_severe_weather():
-    global last_alert_sent
-    try:
-        response = requests.get(ALERTS_URL)
-        if response.status_code == 200:
-            data = response.json()
-            alerts = data.get("alerts", [])
-            if alerts:
-                latest_alert = alerts[0]
-                event = latest_alert.get("event", "Severe Weather Alert")
-                description = latest_alert.get("description", "")
-
-                if event != last_alert_sent:
-                    hashtags = f"#{CITY.replace(' ', '')} #WeatherAlert"
-                    tweet_text = f"⚠️ {event} ⚠️\n\n{description}\n\n{hashtags}"
-
-                    if len(tweet_text) > 280:
-                        allowed_length = 280 - len(hashtags) - 5
-                        tweet_text = f"⚠️ {event} ⚠️\n\n{description[:allowed_length]}...\n\n{hashtags}"
-
-                    client.create_tweet(text=tweet_text)
-                    log(f"[ALERT TWEETED] {event} - {description[:240]}")
-                    last_alert_sent = event
-                    save_last_alert(event)
-            else:
-                log("[NO ALERTS] No severe weather alerts at this time.")
-        else:
-            log(f"[ERROR] Failed to fetch alerts: Status {response.status_code}")
-    except Exception as e:
-        log(f"[ERROR] in check_severe_weather: {e}")
 
 # === Send initial tweet ===
 tweet_weather()
@@ -218,7 +177,7 @@ schedule.every().day.at("16:00").do(tweet_weather)
 schedule.every().day.at("19:00").do(tweet_weather)
 
 # === Check severe weather every 5 minutes ===
-schedule.every(5).minutes.do(check_severe_weather)
+schedule.every(5).minutes.do(fetch_severe_weather_alerts)
 
 # === Keep script running ===
 while True:
