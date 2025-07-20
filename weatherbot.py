@@ -4,7 +4,7 @@ import schedule
 import time
 import os
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 
 print("🚀 NWS Weatherbot is starting up...")
@@ -43,7 +43,7 @@ HEADERS = {"User-Agent": "WeatherBot (https://github.com/yourusername/weatherbot
 # === Logging ===
 def log(msg):
     with open("weatherbot_log.txt", "a") as f:
-        f.write(f"{datetime.now()} - {msg}\n")
+        f.write(f"{datetime.now(timezone.utc)} - {msg}\n")
     print(msg)
 
 # === Load last alert from file ===
@@ -88,16 +88,20 @@ def fetch_with_retries(url, retries=3, delay=5):
 # === Build forecast string from cached or live data ===
 def build_forecast(forecast_data, source="Live"):
     forecast_summary = []
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     start_time = now + timedelta(hours=3)
     count = 0
 
     for period in forecast_data["properties"]["periods"]:
+        # Parse ISO timestamp and ensure it's timezone-aware
         forecast_time = datetime.fromisoformat(period["startTime"])
+        if forecast_time.tzinfo is None:
+            forecast_time = forecast_time.replace(tzinfo=timezone.utc)
+
         if forecast_time >= start_time and count < 4:
             temp = period["temperature"]
             short_forecast = period["shortForecast"]
-            formatted_time = forecast_time.strftime("%I:%M %p").lstrip("0")
+            formatted_time = forecast_time.astimezone().strftime("%I:%M %p").lstrip("0")
             forecast_summary.append(f"{formatted_time}: {temp}°F, {short_forecast}")
             count += 1
 
