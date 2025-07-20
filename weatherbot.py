@@ -4,7 +4,7 @@ import schedule
 import time
 import os
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 
 print("🚀 Weatherbot is starting up...")
@@ -106,24 +106,31 @@ def fetch_12_hour_forecast():
     combined_forecast = []
     seen_times = set()
 
-    now = datetime.now()
+    # Get timezone offset dynamically from live data (fallback to cached)
+    timezone_offset = 0
+    if live_data:
+        timezone_offset = live_data.get("city", {}).get("timezone", 0)
+    elif cached_data:
+        timezone_offset = cached_data.get("city", {}).get("timezone", 0)
 
-    # Find the next 3-hour increment
-    hours_to_next_block = (3 - now.hour % 3) % 3
-    if hours_to_next_block == 0:
-        hours_to_next_block = 3
-    next_forecast_time = (now + timedelta(hours=hours_to_next_block)).replace(
-        minute=0, second=0, microsecond=0
-    )
+    location_tz = timezone(timedelta(seconds=timezone_offset))
 
-    # Merge live and cached data
+    # Current time in location's timezone
+    now_utc = datetime.utcnow().replace(tzinfo=timezone.utc)
+    now_local = now_utc.astimezone(location_tz)
+
+    # Add 3 hours to determine starting time
+    start_time_local = now_local + timedelta(hours=3)
+
+    # Find next forecast block after "now + 3 hours"
     def merge_forecasts(forecast_list):
         merged = []
         for forecast in forecast_list:
-            dt = datetime.strptime(forecast["dt_txt"], "%Y-%m-%d %H:%M:%S")
-            if dt >= next_forecast_time and dt not in seen_times:
-                seen_times.add(dt)
-                merged.append((dt, forecast))
+            forecast_time_utc = datetime.strptime(forecast["dt_txt"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+            forecast_time_local = forecast_time_utc.astimezone(location_tz)
+            if forecast_time_local >= start_time_local and forecast_time_local not in seen_times:
+                seen_times.add(forecast_time_local)
+                merged.append((forecast_time_local, forecast))
         return merged
 
     if cached_data:
@@ -131,20 +138,20 @@ def fetch_12_hour_forecast():
     if live_data:
         combined_forecast.extend(merge_forecasts(live_data["list"]))
 
-    # Sort merged forecasts chronologically and take next 4 slots
+    # Sort merged forecasts chronologically and take next 4 slots (12 hours)
     combined_forecast.sort(key=lambda x: x[0])
     forecast_summary = []
 
-    for dt, forecast in combined_forecast[:4]:
+    for dt_local, forecast in combined_forecast[:4]:
         temp = round(forecast["main"]["temp"])  # Round temperature
         weather_desc = forecast["weather"][0]["description"]
-        formatted_time = dt.strftime("%I:%M %p")
+        formatted_time = dt_local.strftime("%I:%M %p").lstrip("0")
         forecast_summary.append(f"{formatted_time}: {temp}°F, {weather_desc.capitalize()}")
 
     if not forecast_summary:
         return "No forecast data available."
 
-    return "Upcoming weather:\n" + "\n".join(forecast_summary) + "\n#SouthBend #Indiana #Weather #Forecast"
+    return f"Upcoming weather for {CITY}:\n" + "\n".join(forecast_summary) + f"\n#Weather #Forecast #{CITY.replace(' ', '')}"
 
 # === Tweet weather update ===
 def tweet_weather():
@@ -181,7 +188,7 @@ def check_severe_weather():
                 description = latest_alert.get("description", "")
 
                 if event != last_alert_sent:
-                    hashtags = "#SouthBend #WeatherAlert"
+                    hashtags = f"#{CITY.replace(' ', '')} #WeatherAlert"
                     tweet_text = f"⚠️ {event} ⚠️\n\n{description}\n\n{hashtags}"
 
                     if len(tweet_text) > 280:
