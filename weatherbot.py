@@ -6,6 +6,7 @@ import os
 import json
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
+import pytz
 
 print("🚀 NWS Weatherbot is starting up...")
 
@@ -99,7 +100,6 @@ def fetch_current_weather():
         log("[ERROR] Could not fetch observation stations.")
         return "Current weather unavailable."
 
-    # Use the first station in the list
     station_id = stations_data["features"][0]["properties"]["stationIdentifier"]
     latest_obs_url = f"https://api.weather.gov/stations/{station_id}/observations/latest"
     obs_data = fetch_with_retries(latest_obs_url)
@@ -107,12 +107,11 @@ def fetch_current_weather():
         log("[ERROR] Could not fetch latest observation.")
         return "Current weather unavailable."
 
-    # Extract weather info
     temp = obs_data["properties"]["temperature"]["value"]
     desc = obs_data["properties"]["textDescription"]
 
     if temp is not None:
-        temp_f = round((temp * 9/5) + 32)  # Convert from Celsius to Fahrenheit
+        temp_f = round((temp * 9/5) + 32)
         return f"Current weather in {CITY}:\n{temp_f}°F, {desc}"
     else:
         return f"Current weather in {CITY}:\n{desc}"
@@ -120,27 +119,24 @@ def fetch_current_weather():
 # === Build forecast string from cached or live data ===
 def build_forecast(forecast_data, source="Live"):
     forecast_summary = []
-    now = datetime.now(timezone.utc)
+    local_tz = pytz.timezone('America/New_York')  # EDT for South Bend, Indiana
+    now = datetime.now(local_tz)
     
-    # Round up to the next 3-hour mark
     hours_until_next = (3 - (now.hour % 3)) % 3
     if now.minute > 0 or now.second > 0:
-        hours_until_next += 3  # Ensure we start at the next 3-hour mark
-    start_time = (now + timedelta(hours=hours_until_next)).replace(minute=0, second=0, microsecond=0)
+        hours_until_next += 3
+    start_time = (now.replace(minute=0, second=0, microsecond=0) + 
+                  timedelta(hours=hours_until_next))
     
     count = 0
     for i in range(4):  # Get 4 forecast periods (3, 6, 9, 12 hours out)
         target_time = start_time + timedelta(hours=i * 3)
         
-        # Find the closest forecast period to the target time
         closest_period = None
-        min_time_diff = timedelta(hours=1)  # Allow up to 1-hour difference
+        min_time_diff = timedelta(hours=1)
         
         for period in forecast_data["properties"]["periods"]:
-            forecast_time = datetime.fromisoformat(period["startTime"])
-            if forecast_time.tzinfo is None:
-                forecast_time = forecast_time.replace(tzinfo=timezone.utc)
-            
+            forecast_time = datetime.fromisoformat(period["startTime"]).astimezone(local_tz)
             time_diff = abs(forecast_time - target_time)
             if time_diff <= min_time_diff:
                 closest_period = period
@@ -149,7 +145,7 @@ def build_forecast(forecast_data, source="Live"):
         if closest_period:
             temp = closest_period["temperature"]
             short_forecast = closest_period["shortForecast"]
-            formatted_time = target_time.astimezone().strftime("%I:%M %p").lstrip("0")
+            formatted_time = target_time.strftime("%I:%M %p").lstrip("0")
             forecast_summary.append(f"{formatted_time}: {temp}°F, {short_forecast}")
             count += 1
 
@@ -172,7 +168,7 @@ def fetch_hourly_forecast():
         log("[ERROR] Could not fetch hourly forecast data.")
         return use_cached_forecast()
 
-    save_forecast_cache(forecast_data)  # Cache the fresh data
+    save_forecast_cache(forecast_data)
     return build_forecast(forecast_data, source="Live")
 
 # === Use cached forecast as fallback ===
@@ -220,7 +216,6 @@ def fetch_severe_weather_alerts():
                 hashtags = "#SouthBend #Indiana #Weather #Forecast"
                 tweet_text = f"⚠️ {event} ⚠️\n\n{description}\n\n{hashtags}"
 
-                # Truncate if too long
                 if len(tweet_text) > 280:
                     allowed_length = 280 - len(hashtags) - 5
                     tweet_text = f"⚠️ {event} ⚠️\n\n{description[:allowed_length]}...\n\n{hashtags}"
@@ -230,7 +225,7 @@ def fetch_severe_weather_alerts():
                     log(f"[ALERT TWEETED] {event} - {description[:240]}")
                     last_alert_sent = event
                     save_last_alert(event)
-                    break  # Only tweet the first new alert
+                    break
                 except Exception as e:
                     log(f"[ERROR] Failed to tweet alert: {e}")
     else:
