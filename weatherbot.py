@@ -4,7 +4,7 @@ import schedule
 import time
 import os
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import pytz
 
@@ -44,7 +44,7 @@ HEADERS = {"User-Agent": "WeatherBot (https://github.com/yourusername/weatherbot
 # === Logging ===
 def log(msg):
     with open("weatherbot_log.txt", "a") as f:
-        f.write(f"{datetime.now(timezone.utc)} - {msg}\n")
+        f.write(f"{datetime.now(pytz.UTC)} - {msg}\n")
     print(msg)
 
 # === Load last alert from file ===
@@ -122,15 +122,14 @@ def build_forecast(forecast_data, source="Live"):
     local_tz = pytz.timezone('America/New_York')  # EDT for South Bend, Indiana
     now = datetime.now(local_tz)
     
-    hours_until_next = (3 - (now.hour % 3)) % 3
-    if now.minute > 0 or now.second > 0:
-        hours_until_next += 3
+    # Set start time to the next full hour
+    hours_until_next = 1 if now.minute > 0 or now.second > 0 else 0
     start_time = (now.replace(minute=0, second=0, microsecond=0) + 
                   timedelta(hours=hours_until_next))
     
     count = 0
-    for i in range(4):  # Get 4 forecast periods (3, 6, 9, 12 hours out)
-        target_time = start_time + timedelta(hours=i * 3)
+    for i in range(4):  # Get forecast for next hour, then 3, 6, 9 hours out
+        target_time = start_time + timedelta(hours=i * 3 if i > 0 else 0)
         
         closest_period = None
         min_time_diff = timedelta(hours=1)
