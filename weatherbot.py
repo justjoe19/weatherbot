@@ -85,6 +85,38 @@ def fetch_with_retries(url, retries=3, delay=5):
                 log("[ERROR] Max retries reached.")
     return None
 
+# === Fetch current weather conditions ===
+def fetch_current_weather():
+    points_url = f"https://api.weather.gov/points/{LAT},{LON}"
+    points_data = fetch_with_retries(points_url)
+    if not points_data:
+        log("[ERROR] Could not fetch grid point for current weather.")
+        return "Current weather unavailable."
+
+    observation_url = points_data["properties"]["observationStations"]
+    stations_data = fetch_with_retries(observation_url)
+    if not stations_data or not stations_data.get("features"):
+        log("[ERROR] Could not fetch observation stations.")
+        return "Current weather unavailable."
+
+    # Use the first station in the list
+    station_id = stations_data["features"][0]["properties"]["stationIdentifier"]
+    latest_obs_url = f"https://api.weather.gov/stations/{station_id}/observations/latest"
+    obs_data = fetch_with_retries(latest_obs_url)
+    if not obs_data or "properties" not in obs_data:
+        log("[ERROR] Could not fetch latest observation.")
+        return "Current weather unavailable."
+
+    # Extract weather info
+    temp = obs_data["properties"]["temperature"]["value"]
+    desc = obs_data["properties"]["textDescription"]
+
+    if temp is not None:
+        temp_f = round((temp * 9/5) + 32)  # Convert from Celsius to Fahrenheit
+        return f"Current weather in {CITY}:\n{temp_f}°F, {desc}"
+    else:
+        return f"Current weather in {CITY}:\n{desc}"
+
 # === Build forecast string from cached or live data ===
 def build_forecast(forecast_data, source="Live"):
     forecast_summary = []
@@ -98,7 +130,8 @@ def build_forecast(forecast_data, source="Live"):
         if forecast_time.tzinfo is None:
             forecast_time = forecast_time.replace(tzinfo=timezone.utc)
 
-        if forecast_time >= start_time and count < 4:
+        # Allow the closest forecast block after (now + 3 hours) - 1 hour
+        if forecast_time >= start_time - timedelta(hours=1) and count < 4:
             temp = period["temperature"]
             short_forecast = period["shortForecast"]
             formatted_time = forecast_time.astimezone().strftime("%I:%M %p").lstrip("0")
@@ -106,20 +139,18 @@ def build_forecast(forecast_data, source="Live"):
             count += 1
 
     if forecast_summary:
-        return f"Upcoming weather for {CITY} ({source}):\n" + "\n".join(forecast_summary)
+        return f"Upcoming weather ({source}):\n" + "\n".join(forecast_summary)
     else:
         return "No forecast data available."
 
 # === Fetch hourly forecast from NWS ===
 def fetch_hourly_forecast():
-    # Step 1: Get grid point info
     points_url = f"https://api.weather.gov/points/{LAT},{LON}"
     points_data = fetch_with_retries(points_url)
     if not points_data:
         log("[ERROR] Could not fetch grid point data.")
         return use_cached_forecast()
 
-    # Step 2: Get hourly forecast URL
     forecast_url = points_data["properties"]["forecastHourly"]
     forecast_data = fetch_with_retries(forecast_url)
     if not forecast_data:
@@ -139,7 +170,25 @@ def use_cached_forecast():
         log("[FALLBACK] No cached forecast data available.")
         return "Failed to fetch forecast data."
 
-# === Fetch active severe weather alerts from NWS ===
+# === Tweet weather update ===
+def tweet_weather():
+    try:
+        current_weather = fetch_current_weather()
+        forecast = fetch_hourly_forecast()
+        hashtags = "#SouthBend #Indiana #Weather #Forecast"
+        tweet_text = f"{current_weather}\n\n{forecast}\n\n{hashtags}"
+        response = client.create_tweet(text=tweet_text)
+        print("Tweeted:", response.data)
+        log(f"[WEATHER TWEETED] {tweet_text}")
+
+    except tweepy.errors.TooManyRequests:
+        log("[ERROR] Twitter rate limit exceeded. Retrying in 15 minutes...")
+        time.sleep(900)
+        tweet_weather()
+    except Exception as e:
+        log(f"[ERROR] Failed to tweet weather: {e}")
+
+# === Check severe weather alerts ===
 last_alert_sent = load_last_alert()
 
 def fetch_severe_weather_alerts():
@@ -171,23 +220,6 @@ def fetch_severe_weather_alerts():
                     log(f"[ERROR] Failed to tweet alert: {e}")
     else:
         log("[NO ALERTS] No severe weather alerts at this time.")
-
-# === Tweet weather update ===
-def tweet_weather():
-    try:
-        forecast = fetch_hourly_forecast()
-        hashtags = "#SouthBend #Indiana #Weather #Forecast"
-        tweet_text = f"{forecast}\n\n{hashtags}"
-        response = client.create_tweet(text=tweet_text)
-        print("Tweeted:", response.data)
-        log(f"[WEATHER TWEETED] {tweet_text}")
-
-    except tweepy.errors.TooManyRequests:
-        log("[ERROR] Twitter rate limit exceeded. Retrying in 15 minutes...")
-        time.sleep(900)
-        tweet_weather()
-    except Exception as e:
-        log(f"[ERROR] Failed to tweet weather: {e}")
 
 # === Send initial tweet ===
 tweet_weather()
