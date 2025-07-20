@@ -106,7 +106,7 @@ def build_forecast(forecast_data, source="Live"):
             count += 1
 
     if forecast_summary:
-        return f"Upcoming weather for {CITY} ({source}):\n" + "\n".join(forecast_summary)
+        return f"Upcoming weather for {CITY} ({source}):\n" + "\n".join(forecast_summary) + "/n#SouthBend #Indiana #Weather #Forecast"
     else:
         return "No forecast data available."
 
