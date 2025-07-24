@@ -150,9 +150,10 @@ def check_alerts_periodically():
 def run_scheduler():
     scheduler = BackgroundScheduler()
     scheduler.add_job(tweet_weather_update, "cron", hour=7, minute=0)
-    scheduler.add_job(tweet_weather_update, "cron", hour=11, minute=0)
-    scheduler.add_job(tweet_weather_update, "cron", hour=16, minute=0)
-    scheduler.add_job(tweet_weather_update, "cron", hour=20, minute=0)
+    scheduler.add_job(tweet_weather_update, "cron", hour=12, minute=0)
+    scheduler.add_job(tweet_weather_update, "cron", hour=17, minute=0)
+    scheduler.add_job(tweet_weather_update, "cron", hour=22, minute=0)
+    scheduler.add_job(tweet_weather_update, "cron", hour=3, minute=0)
     scheduler.add_job(check_alerts_periodically, "interval", minutes=5)
     scheduler.start()
 
