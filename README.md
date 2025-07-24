@@ -1,12 +1,13 @@
-# 🌤️ Weatherbot
+# 🌤️ NWS Weatherbot for South Bend, IN
 
-Weatherbot is a Python app that tweets the current weather, a 12-hour forecast, and severe weather alerts for a specific location.  
+This is an automated Python bot that tweets current weather updates and severe weather alerts for **South Bend, Indiana**, powered by the [National Weather Service (NWS)](https://www.weather.gov/) API.
 
-It uses the **OpenWeatherMap API** for weather data and the **Twitter API** to post updates automatically on a schedule.  
+---
 
-✨ Features:
-- 🕒 Tweets **current weather** with rounded temperatures (°F)
-- 📆 Includes a **12-hour forecast** in 3-hour increments
-- ⚠️ Checks for **severe weather alerts** every 5 minutes and posts them **immediately**
-- 🗂 Uses cached forecast data to fill in **missing time slots** if the API skips them
-- ⏰ Runs continuously and posts at scheduled times
+## 📦 Features
+
+- Tweets **current weather + 5-hour forecast** at:
+  - **7:00am, 12:00pm, 5:00pm, 10:00pm, and 3:00am (local time)**
+- Tweets **severe weather alerts** (e.g. warnings/watches) in real-time
+- Optionally run in `--dry-run` mode to preview tweets without posting
+- Currently running on [X.com/SBforecast](https://x.com/SBforecast)
