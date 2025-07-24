@@ -21,13 +21,12 @@ TWITTER_ACCESS_TOKEN_SECRET = os.getenv("TWITTER_ACCESS_TOKEN_SECRET")
 
 assert TWITTER_API_KEY and TWITTER_API_SECRET, "Twitter API credentials missing!"
 
-client = tweepy.Client(
-    bearer_token=TWITTER_BEARER_TOKEN,
-    consumer_key=TWITTER_API_KEY,
-    consumer_secret=TWITTER_API_SECRET,
-    access_token=TWITTER_ACCESS_TOKEN,
-    access_token_secret=TWITTER_ACCESS_TOKEN_SECRET
+# Use v1.1 for basic tweet posting (no Elevated access required)
+auth = tweepy.OAuth1UserHandler(
+    TWITTER_API_KEY, TWITTER_API_SECRET,
+    TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_TOKEN_SECRET
 )
+twitter_api = tweepy.API(auth)
 
 # ---- NWS API URLs ----
 POINT_URL = "https://api.weather.gov/points/41.6764,-86.2520"  # South Bend, IN
@@ -104,10 +103,10 @@ def safe_tweet_post(message):
     if len(message) > 280:
         message = message[:276] + "..."
     if DRY_RUN:
-        print("📝 [DRY-RUN] Would tweet:", message)
+        print("📜 [DRY-RUN] Would tweet:", message)
         return
     try:
-        client.create_tweet(text=message)
+        twitter_api.update_status(status=message)
         print("✅ Tweet sent:", message)
     except Exception as e:
         print("⚠️ Failed to send tweet:", e)
@@ -122,7 +121,7 @@ def tweet_weather_update():
             f"South Bend Weather Update\n\n"
             f"Now: {current}\n\n"
             f"Next 4 Hours:\n{forecast}\n\n"
-            f"#SouthBend #Indiana #Weather #Forecast"
+            f"#SouthBend #Weather"
         )
         safe_tweet_post(message)
     except Exception as e:
@@ -132,7 +131,7 @@ def tweet_alert(title, description):
     try:
         message = (
             f"WEATHER ALERT\n\n{title}\n\n{description[:230]}...\n\n"
-            f"#SouthBend #Indiana #WeatherAlert"
+            f"#SouthBend #WeatherAlert"
         )
         safe_tweet_post(message)
         print(f"✅ Alert posted: {title}")
@@ -151,14 +150,13 @@ def check_alerts_periodically():
 def run_scheduler():
     scheduler = BackgroundScheduler()
     scheduler.add_job(tweet_weather_update, "cron", hour=7, minute=0)
-    scheduler.add_job(tweet_weather_update, "cron", hour=12, minute=0)
-    scheduler.add_job(tweet_weather_update, "cron", hour=17, minute=0)
-    scheduler.add_job(tweet_weather_update, "cron", hour=22, minute=0)
-    scheduler.add_job(tweet_weather_update, "cron", hour=3, minute=0)
+    scheduler.add_job(tweet_weather_update, "cron", hour=11, minute=0)
+    scheduler.add_job(tweet_weather_update, "cron", hour=16, minute=0)
+    scheduler.add_job(tweet_weather_update, "cron", hour=20, minute=0)
     scheduler.add_job(check_alerts_periodically, "interval", minutes=5)
     scheduler.start()
 
-    print("\n⏱️ Scheduler started. Press Ctrl+C to exit.")
+    print("\n🕱️ Scheduler started. Press Ctrl+C to exit.")
     try:
         while True:
             time.sleep(60)
