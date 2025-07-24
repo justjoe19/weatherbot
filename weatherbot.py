@@ -122,7 +122,7 @@ def tweet_weather_update():
             f"South Bend Weather Update\n\n"
             f"Now: {current}\n\n"
             f"Next 4 Hours:\n{forecast}\n\n"
-            f"#SouthBend #Weather"
+            f"#SouthBend #Indiana #Weather #Forecast"
         )
         safe_tweet_post(message)
     except Exception as e:
@@ -132,7 +132,7 @@ def tweet_alert(title, description):
     try:
         message = (
             f"WEATHER ALERT\n\n{title}\n\n{description[:230]}...\n\n"
-            f"#SouthBend #WeatherAlert"
+            f"#SouthBend #Indiana #WeatherAlert"
         )
         safe_tweet_post(message)
         print(f"✅ Alert posted: {title}")
