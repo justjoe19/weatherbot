@@ -1,134 +1,145 @@
 import os
-import json
 import time
+import json
 import pytz
 import requests
-import schedule
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
+from apscheduler.schedulers.blocking import BlockingScheduler
 from requests_oauthlib import OAuth1
 
-print("✨ WeatherBot (no tweepy) starting up...")
-
-# === Load environment ===
+# === Load environment variables ===
 load_dotenv()
 
+# === Config ===
 CITY = os.getenv("CITY", "South Bend, Indiana")
 LAT = os.getenv("LAT", "41.6764")
 LON = os.getenv("LON", "-86.2520")
+TZ = pytz.timezone("America/Indiana/Indianapolis")
 
-# === Twitter API credentials ===
-TW_API_KEY = os.getenv("TWITTER_API_KEY")
-TW_API_SECRET = os.getenv("TWITTER_API_SECRET")
-TW_ACCESS_TOKEN = os.getenv("TWITTER_ACCESS_TOKEN")
-TW_ACCESS_SECRET = os.getenv("TWITTER_ACCESS_TOKEN_SECRET")
+TWITTER_API_KEY = os.getenv("TWITTER_API_KEY")
+TWITTER_API_SECRET = os.getenv("TWITTER_API_SECRET")
+TWITTER_ACCESS_TOKEN = os.getenv("TWITTER_ACCESS_TOKEN")
+TWITTER_ACCESS_TOKEN_SECRET = os.getenv("TWITTER_ACCESS_TOKEN_SECRET")
 
-# === Twitter auth ===
+ALERT_TRACK_FILE = "last_alert.txt"
+
+# === Twitter Auth ===
 auth = OAuth1(
-    TW_API_KEY,
-    TW_API_SECRET,
-    TW_ACCESS_TOKEN,
-    TW_ACCESS_SECRET
+    TWITTER_API_KEY,
+    TWITTER_API_SECRET,
+    TWITTER_ACCESS_TOKEN,
+    TWITTER_ACCESS_TOKEN_SECRET,
 )
 
-# === Log file ===
+# === Utilities ===
 def log(msg):
-    print(msg)
-    with open("weatherbot_log.txt", "a") as f:
-        f.write(f"{datetime.utcnow()} - {msg}\n")
+    print(f"[{datetime.now()}] {msg}")
 
-# === Twitter post ===
+def fetch_json(url):
+    try:
+        r = requests.get(url, headers={"User-Agent": "weatherbot"}, timeout=10)
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        log(f"ERROR: Failed to fetch {url}: {e}")
+        return None
+
 def post_tweet(text):
     url = "https://api.twitter.com/2/tweets"
-    headers = {"Content-Type": "application/json"}
     payload = {"text": text}
     try:
-        r = requests.post(url, headers=headers, json=payload, auth=auth)
-        r.raise_for_status()
-        log("[TWEET SENT] " + text)
+        res = requests.post(url, auth=auth, json=payload)
+        res.raise_for_status()
+        log(f"Tweeted: {text}")
     except Exception as e:
-        log(f"[ERROR] Tweet failed: {e}")
+        log(f"ERROR posting tweet: {e}")
 
-# === NWS API headers ===
-HEADERS = {"User-Agent": "WeatherBot (https://github.com/yourusername/weatherbot)"}
-
-# === Fetch helper ===
-def fetch_with_retries(url, retries=3, delay=5):
-    for i in range(retries):
-        try:
-            r = requests.get(url, headers=HEADERS, timeout=10)
-            r.raise_for_status()
-            return r.json()
-        except Exception as e:
-            log(f"[RETRY {i+1}] {url}: {e}")
-            time.sleep(delay)
-    return None
-
-# === Weather fetch ===
-def fetch_current_weather():
-    points = fetch_with_retries(f"https://api.weather.gov/points/{LAT},{LON}")
+def get_current_conditions():
+    points = fetch_json(f"https://api.weather.gov/points/{LAT},{LON}")
     if not points:
         return "Weather unavailable."
 
-    stations = fetch_with_retries(points['properties']['observationStations'])
-    if not stations or not stations.get("features"):
+    station_url = points["properties"]["observationStations"]
+    stations = fetch_json(station_url)
+    if not stations:
         return "Weather unavailable."
 
-    station = stations['features'][0]['properties']['stationIdentifier']
-    obs = fetch_with_retries(f"https://api.weather.gov/stations/{station}/observations/latest")
+    station_id = stations["features"][0]["properties"]["stationIdentifier"]
+    obs = fetch_json(f"https://api.weather.gov/stations/{station_id}/observations/latest")
     if not obs:
         return "Weather unavailable."
 
-    temp = obs['properties']['temperature']['value']
-    desc = obs['properties']['textDescription']
-    if temp is not None:
-        temp_f = round(temp * 9 / 5 + 32)
-        return f"Current weather in {CITY}:\n{temp_f}°F, {desc}"
-    return f"Current weather in {CITY}:\n{desc}"
+    temp_c = obs["properties"]["temperature"]["value"]
+    desc = obs["properties"]["textDescription"]
+    if temp_c is not None:
+        temp_f = round(temp_c * 9 / 5 + 32)
+        return f"Current in {CITY}: {temp_f}°F, {desc}"
+    return f"Current in {CITY}: {desc}"
 
-# === Forecast ===
-def fetch_hourly_forecast():
-    points = fetch_with_retries(f"https://api.weather.gov/points/{LAT},{LON}")
+def get_hourly_forecast():
+    points = fetch_json(f"https://api.weather.gov/points/{LAT},{LON}")
     if not points:
         return "Forecast unavailable."
 
-    forecast_url = points['properties']['forecastHourly']
-    forecast_data = fetch_with_retries(forecast_url)
-    if not forecast_data:
+    hourly_url = points["properties"]["forecastHourly"]
+    forecast = fetch_json(hourly_url)
+    if not forecast:
         return "Forecast unavailable."
 
-    local_tz = pytz.timezone('America/New_York')
-    now = datetime.now(local_tz)
-    start = now + timedelta(hours=1 if now.minute > 10 else 0)
-    start = start.replace(minute=0, second=0, microsecond=0)
-
+    now = datetime.now(TZ)
     summary = []
-    for i in range(4):
-        target = start + timedelta(hours=i * 3)
-        for period in forecast_data['properties']['periods']:
-            t = datetime.fromisoformat(period['startTime']).astimezone(local_tz)
-            if abs((t - target).total_seconds()) <= 3600:
-                time_label = target.strftime("%I:%M %p").lstrip("0")
-                summary.append(f"{time_label}: {period['temperature']}°F, {period['shortForecast']}")
-                break
-    return "Upcoming forecast:\n" + "\n".join(summary)
 
-# === Tweet Weather ===
-def tweet_weather():
-    current = fetch_current_weather()
-    forecast = fetch_hourly_forecast()
-    hashtags = "#SouthBend #Indiana #Weather #Forecast"
-    text = f"{current}\n\n{forecast}\n\n{hashtags}"
-    post_tweet(text)
+    for period in forecast["properties"]["periods"][:4]:
+        t = datetime.fromisoformat(period["startTime"]).astimezone(TZ)
+        time_str = t.strftime("%I %p").lstrip("0")
+        summary.append(f"{time_str}: {period['temperature']}°F, {period['shortForecast']}")
+
+    return "\n".join(summary)
+
+def load_last_alert():
+    if os.path.exists(ALERT_TRACK_FILE):
+        with open(ALERT_TRACK_FILE) as f:
+            return f.read().strip()
+    return ""
+
+def save_last_alert(event):
+    with open(ALERT_TRACK_FILE, "w") as f:
+        f.write(event)
+
+def check_alerts():
+    url = f"https://api.weather.gov/alerts/active?point={LAT},{LON}"
+    data = fetch_json(url)
+    if not data or not data.get("features"):
+        log("No alerts.")
+        return
+
+    last_sent = load_last_alert()
+
+    for alert in data["features"]:
+        event = alert["properties"]["event"]
+        if event == last_sent:
+            return
+
+        description = alert["properties"].get("description", "")
+        hashtags = "#WeatherAlert #SouthBend"
+        tweet = f"⚠️ {event} ⚠️\n\n{description[:240]}...\n\n{hashtags}"
+        post_tweet(tweet)
+        save_last_alert(event)
+        return
+
+def tweet_forecast():
+    current = get_current_conditions()
+    forecast = get_hourly_forecast()
+    hashtags = "#SouthBend #Indiana #Weather"
+    post_tweet(f"{current}\n\n{forecast}\n\n{hashtags}")
 
 # === Schedule ===
-tweet_weather()
-schedule.every().day.at("03:00").do(tweet_weather)
-schedule.every().day.at("07:00").do(tweet_weather)
-schedule.every().day.at("12:00").do(tweet_weather)
-schedule.every().day.at("17:00").do(tweet_weather)
-schedule.every().day.at("22:00").do(tweet_weather)
+scheduler = BlockingScheduler(timezone=TZ)
+scheduler.add_job(tweet_forecast, "cron", hour="1,7,11,13,16,19")
+scheduler.add_job(check_alerts, "interval", minutes=5)
 
-while True:
-    schedule.run_pending()
-    time.sleep(10)
+log("✅ Weatherbot started")
+tweet_forecast()
+check_alerts()
+scheduler.start()
