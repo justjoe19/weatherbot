@@ -94,8 +94,8 @@ def get_current_conditions():
     desc = obs["properties"]["textDescription"]
     if temp_c is not None:
         temp_f = round(temp_c * 9 / 5 + 32)
-        return f"Current in {CITY}: {temp_f}°F, {desc}"
-    return f"Current in {CITY}: {desc}"
+        return f"Current weather in {CITY}: {temp_f}°F, {desc}"
+    return f"Current weather in {CITY}: {desc}"
 
 # === Hourly Forecast Summary ===
 def get_hourly_forecast():
@@ -162,7 +162,11 @@ def tweet_forecast():
     current = get_current_conditions()
     forecast = get_hourly_forecast()
     hashtags = "#SouthBend #Indiana #Weather"
-    post_tweet(f"{current}\n\n{forecast}\n\n{hashtags}")
+    post_tweet(
+        f"{current}\n\n"
+        f"Upcoming forecast:\n{forecast}\n\n"
+        f"{hashtags}"
+        )
 
 # === Scheduler Configuration ===
 scheduler = BlockingScheduler(timezone=TZ)
