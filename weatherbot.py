@@ -1,20 +1,3 @@
-"""
-WeatherBot - Twitter Weather & Alert Notifier
-
-This bot posts weather updates and severe weather alerts for a specific location
-(South Bend, Indiana by default) to Twitter using the NWS API.
-
-Environment Variables Required:
-- CITY: Name of the city for tweet formatting.
-- LAT, LON: Latitude and longitude coordinates.
-- TWITTER_API_KEY, TWITTER_API_SECRET
-- TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_TOKEN_SECRET
-
-Schedule:
-- Tweets weather forecast 6 times daily.
-- Checks for severe alerts every 5 minutes.
-"""
-
 import os
 import time
 import json
@@ -28,7 +11,7 @@ from requests_oauthlib import OAuth1
 # === Load environment variables ===
 load_dotenv()
 
-# === Configuration ===
+# === Config ===
 CITY = os.getenv("CITY", "South Bend, Indiana")
 LAT = os.getenv("LAT", "41.6764")
 LON = os.getenv("LON", "-86.2520")
@@ -41,7 +24,7 @@ TWITTER_ACCESS_TOKEN_SECRET = os.getenv("TWITTER_ACCESS_TOKEN_SECRET")
 
 ALERT_TRACK_FILE = "last_alert.txt"
 
-# === Twitter OAuth Setup ===
+# === Twitter Auth ===
 auth = OAuth1(
     TWITTER_API_KEY,
     TWITTER_API_SECRET,
@@ -49,11 +32,10 @@ auth = OAuth1(
     TWITTER_ACCESS_TOKEN_SECRET,
 )
 
-# === Logging Utility ===
+# === Utilities ===
 def log(msg):
     print(f"[{datetime.now()}] {msg}")
 
-# === HTTP JSON Fetch with Error Handling ===
 def fetch_json(url):
     try:
         r = requests.get(url, headers={"User-Agent": "weatherbot"}, timeout=10)
@@ -63,7 +45,6 @@ def fetch_json(url):
         log(f"ERROR: Failed to fetch {url}: {e}")
         return None
 
-# === Post Tweet ===
 def post_tweet(text):
     url = "https://api.twitter.com/2/tweets"
     payload = {"text": text}
@@ -74,7 +55,6 @@ def post_tweet(text):
     except Exception as e:
         log(f"ERROR posting tweet: {e}")
 
-# === Current Weather Report ===
 def get_current_conditions():
     points = fetch_json(f"https://api.weather.gov/points/{LAT},{LON}")
     if not points:
@@ -97,7 +77,6 @@ def get_current_conditions():
         return f"Current weather in {CITY}: {temp_f}°F, {desc}"
     return f"Current weather in {CITY}: {desc}"
 
-# === Hourly Forecast Summary ===
 def get_hourly_forecast():
     points = fetch_json(f"https://api.weather.gov/points/{LAT},{LON}")
     if not points:
@@ -124,7 +103,6 @@ def get_hourly_forecast():
 
     return "\n".join(summary)
 
-# === Alert File IO ===
 def load_last_alert():
     if os.path.exists(ALERT_TRACK_FILE):
         with open(ALERT_TRACK_FILE) as f:
@@ -135,7 +113,6 @@ def save_last_alert(event):
     with open(ALERT_TRACK_FILE, "w") as f:
         f.write(event)
 
-# === Severe Weather Alerts ===
 def check_alerts():
     url = f"https://api.weather.gov/alerts/active?point={LAT},{LON}"
     data = fetch_json(url)
@@ -157,7 +134,6 @@ def check_alerts():
         save_last_alert(event)
         return
 
-# === Weather Tweet Job ===
 def tweet_forecast():
     current = get_current_conditions()
     forecast = get_hourly_forecast()
@@ -168,7 +144,7 @@ def tweet_forecast():
         f"{hashtags}"
         )
 
-# === Scheduler Configuration ===
+# === Schedule ===
 scheduler = BlockingScheduler(timezone=TZ)
 scheduler.add_job(tweet_forecast, "cron", hour="1,7,11,13,16,19")
 scheduler.add_job(check_alerts, "interval", minutes=5)
