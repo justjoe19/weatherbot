@@ -88,12 +88,18 @@ def get_hourly_forecast():
         return "Forecast unavailable."
 
     now = datetime.now(TZ)
-    summary = []
+    next_hour = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
 
-    for period in forecast["properties"]["periods"][:4]:
+    summary = []
+    count = 0
+    for period in forecast["properties"]["periods"]:
         t = datetime.fromisoformat(period["startTime"]).astimezone(TZ)
-        time_str = t.strftime("%I %p").lstrip("0")
-        summary.append(f"{time_str}: {period['temperature']}°F, {period['shortForecast']}")
+        if t >= next_hour:
+            time_str = t.strftime("%I %p").lstrip("0")
+            summary.append(f"{time_str}: {period['temperature']}°F, {period['shortForecast']}")
+            count += 1
+        if count == 4:
+            break
 
     return "\n".join(summary)
 
@@ -136,7 +142,7 @@ def tweet_forecast():
 
 # === Schedule ===
 scheduler = BlockingScheduler(timezone=TZ)
-scheduler.add_job(tweet_forecast, "cron", hour="3,7,12,17,22")
+scheduler.add_job(tweet_forecast, "cron", hour="1,7,11,13,16,19")
 scheduler.add_job(check_alerts, "interval", minutes=5)
 
 log("✅ Weatherbot started")
