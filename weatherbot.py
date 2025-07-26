@@ -136,7 +136,7 @@ def tweet_forecast():
 
 # === Schedule ===
 scheduler = BlockingScheduler(timezone=TZ)
-scheduler.add_job(tweet_forecast, "cron", hour="1,7,11,13,16,19")
+scheduler.add_job(tweet_forecast, "cron", hour="3,7,12,17,22")
 scheduler.add_job(check_alerts, "interval", minutes=5)
 
 log("✅ Weatherbot started")
