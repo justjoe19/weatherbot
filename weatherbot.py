@@ -65,7 +65,7 @@ def fetch_json(url):
 
 # === Post Tweet ===
 def post_tweet(text):
-    url = "https://api.twitter.com/2/tweets"
+    url = "https://api.x.com/2/tweets"
     payload = {"text": text}
     try:
         res = requests.post(url, auth=auth, json=payload)
