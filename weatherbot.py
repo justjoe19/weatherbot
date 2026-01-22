@@ -171,6 +171,6 @@ scheduler.add_job(check_alerts, "interval", minutes=5)
 
 if __name__ == "__main__":
     log("✅ Weatherbot started")
-    # tweet_forecast() # Don't tweet immediately on startup to avoid spam if restarting frequently
+    # tweet_forecast() # Uncomment to test tweeting immediately on startup
     check_alerts()
     scheduler.start()
