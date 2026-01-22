@@ -96,4 +96,4 @@ The service is configured to run continuously, ensuring your weather bot never m
 
 ---
 
-*Developed by [Your Name]*
+*Developed by Joe*
