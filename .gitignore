@@ -1,0 +1,13 @@
+# Ignore environment variables
+.env
+
+# Python cache files
+__pycache__/
+*.pyc
+
+# OS metadata
+.DS_Store
+
+# Virtual environments
+venv/
+.env/
