@@ -34,6 +34,7 @@ WeatherBot is a robust Python application designed to provide real-time weather 
 *   **Key Libraries**:
     *   `requests` & `requests-oauthlib`: HTTP networking and OAuth authentication.
     *   `apscheduler`: Advanced background scheduling.
+    *   `flask`: Lightweight web server (required for cloud hosting health checks).
     *   `python-dotenv`: Environment variable management.
 
 ---
@@ -76,12 +77,13 @@ To run WeatherBot locally on your machine:
     ```bash
     python weatherbot.py
     ```
+    *The bot will start a local web server at `http://localhost:5000` and begin its scheduling loop.*
 
 ---
 
 ## 🚀 Deployment
 
-This project is optimized for deployment on **Render** as a Background Worker.
+This project is optimized for deployment on **Render** as a **Web Service** (Free Tier compatible).
 
 ### Deploying with Render Blueprints
 
@@ -90,10 +92,10 @@ This project is optimized for deployment on **Render** as a Background Worker.
 3.  **Connect Repo**: Select your `weatherbot` repository.
 4.  **Auto-Configuration**: Render will detect the `render.yaml` file included in this project.
 5.  **Credentials**: You will be prompted to input your Twitter API credentials securely during the setup.
-6.  **Launch**: Click **Apply**. Render will build the environment and start the background worker.
+6.  **Launch**: Click **Apply**. Render will build the environment and start the web service.
 
-The service is configured to run continuously, ensuring your weather bot never misses a forecast.
+The service is configured to run continuously. Render will ping the web server to keep it alive.
 
 ---
 
-*Developed by Joe*
+*Developed by [Your Name]*

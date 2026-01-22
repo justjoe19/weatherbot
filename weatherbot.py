@@ -20,10 +20,12 @@ import time
 import json
 import pytz
 import requests
+import threading
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
-from apscheduler.schedulers.blocking import BlockingScheduler
+from apscheduler.schedulers.background import BackgroundScheduler
 from requests_oauthlib import OAuth1
+from flask import Flask
 
 # === Load environment variables ===
 load_dotenv()
@@ -165,12 +167,27 @@ def tweet_forecast():
     post_tweet(f"{current}\n\n{forecast}\n\n{hashtags}")
 
 # === Scheduler Configuration ===
-scheduler = BlockingScheduler(timezone=TZ)
+scheduler = BackgroundScheduler(timezone=TZ)
 scheduler.add_job(tweet_forecast, "cron", hour="3,7,12,17,22")
 scheduler.add_job(check_alerts, "interval", minutes=5)
 
-if __name__ == "__main__":
+# === Flask Web Server (for Render) ===
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return "WeatherBot is running! 🌦️"
+
+def start_bot():
     log("✅ Weatherbot started")
     # tweet_forecast() # Uncomment to test tweeting immediately on startup
     check_alerts()
     scheduler.start()
+
+if __name__ == "__main__":
+    # Start the bot logic
+    start_bot()
+    
+    # Start the web server (Render will use the PORT env var)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
