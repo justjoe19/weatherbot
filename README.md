@@ -4,6 +4,8 @@
 
 WeatherBot is a robust Python application designed to provide real-time weather updates and severe weather alerts via Twitter (X). Leveraging the National Weather Service (NWS) API, it ensures the community stays informed with accurate, timely, and automated broadcasts.
 
+Live at https://x.com/SBforecast
+
 ---
 
 ## 📋 Table of Contents
