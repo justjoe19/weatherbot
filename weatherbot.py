@@ -16,11 +16,8 @@ Schedule:
 """
 
 import os
-import time
-import json
 import pytz
 import requests
-import threading
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -180,7 +177,7 @@ def home():
 
 def start_bot():
     log("✅ Weatherbot started")
-    # tweet_forecast() # Uncomment to test tweeting immediately on startup
+    tweet_forecast() # Uncomment to test tweeting immediately on startup
     check_alerts()
     scheduler.start()
 
